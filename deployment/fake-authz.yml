@@ -1,0 +1,121 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: authz
+  labels:
+    app: authz
+    version: latest
+    app.kubernetes.io/name: authz
+    app.kubernetes.io/version: latest
+spec:
+  selector:
+    app: authz
+  ports:
+    - name: "grpc"
+      port: 50051
+      targetPort: 50051
+    - name: "http"
+      port: 8000
+      targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz
+  labels:
+    app: authz
+    version: latest
+    app.kubernetes.io/name: authz
+    app.kubernetes.io/version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz
+  template:
+    metadata:
+      labels:
+        app: authz
+        version: latest
+        app.kubernetes.io/name: authz
+        app.kubernetes.io/version: latest
+    spec:
+      containers:
+      - name: authz
+        image: fake-authz:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 50051
+          name: "grpc"
+        resources:
+          limits:
+            cpu: 1.5
+            memory: "1Gi"
+          requests:
+            cpu: 50m
+            memory: "256Mi"
+        livenessProbe:
+          exec:
+            command: ["/grpc_health_probe", "-addr=:50051"]
+          initialDelaySeconds: 30
+        readinessProbe:
+          exec:
+            command: ["/grpc_health_probe", "-addr=:50051"]
+          initialDelaySeconds: 30
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_SERVICE_NAME
+          value: authz
+        - name: DD_TRACE_GLOBAL_TAGS
+          value: "env:"
+        - name: ISSUER
+          value: 
+        - name: ENV
+          value: 
+
+---
+
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: authz
+  labels:
+    app: authz
+    version: latest
+    app.kubernetes.io/name: authz
+    app.kubernetes.io/version: latest
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: authz
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 70
+
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: authz
+  labels:
+    app: authz
+    version: latest
+    app.kubernetes.io/name: authz
+    app.kubernetes.io/version: latest
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: authz

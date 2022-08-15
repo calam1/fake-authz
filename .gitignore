@@ -1,0 +1,19 @@
+*.key
+*.pem
+*.csr
+
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+
+.vscode/
+
+config_processed.yml
+basic.yml
+basic.yaml
+
+# python
+__pycache__
+test-results/

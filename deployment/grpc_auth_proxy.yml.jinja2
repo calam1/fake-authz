@@ -1,0 +1,158 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ appname }}
+  labels:
+    app: {{ appname }}
+    version: {{ tag }}
+    app.kubernetes.io/name: {{ appname }}
+    app.kubernetes.io/version: {{ tag }}
+    grainger.com/managed-by-team: {{ teamname }}
+    grainger.com/repo: {{ reponame }}
+  annotations:
+# These annotations will setup http health checks on Datadog
+# https://docs.datadoghq.com/integrations/http_check/
+    ad.datadoghq.com/service.check_names: '["http_check", "http_check"]'
+    ad.datadoghq.com/service.init_configs: '[{},{}]'
+    ad.datadoghq.com/service.instances: |
+      [
+          {
+            "name": "{{ appname }}.{{ namespace }}.svc.cluster.local",
+            # "url": "http://{{ appname }}.{{ namespace }}.svc.cluster.local/headers",
+            "url": "http://{{ appname }}.{{ namespace }}.svc.cluster.local/headers",
+            "timeout": 10,
+            "include_content": true,
+            "content_match": "UP",
+            "http_response_status_code": "200",
+            "ignore_ssl_warning": true,
+            "disable_ssl_validation": true,
+            "check_certificate_expiration": false,
+            "tags": ["grainger-di:true", "check_url_type:internal", "service:{{ appname }}"]
+
+          },
+          {
+            "name": "{{ fqdn }}",
+            "url": "https://{{ fqdn }}/headers",
+            "timeout": 10,
+            "include_content": true,
+            "content_match": "UP",
+            "http_response_status_code": "200",
+            "ignore_ssl_warning": true,
+            "disable_ssl_validation": true,
+            "check_certificate_expiration": false,
+            "tags": ["grainger-di:true", "check_url_type:external", "service:{{ appname }}"]
+          }
+      ]
+spec:
+  selector:
+    app: {{ appname }}
+  ports:
+    - name: "grpc"
+      port: 50051
+      targetPort: 50051
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ appname }}
+  labels:
+    app: {{ appname }}
+    version: {{ tag }}
+    app.kubernetes.io/name: {{ appname }}
+    app.kubernetes.io/version: {{ tag }}
+    grainger.com/managed-by-team: {{ teamname }}
+    grainger.com/repo: {{ reponame }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: {{ appname }}
+  template:
+    metadata:
+      labels:
+        app: {{ appname }}
+        version: {{ tag }}
+        app.kubernetes.io/name: {{ appname }}
+        app.kubernetes.io/version: {{ tag }}
+        grainger.com/managed-by-team: {{ teamname }}
+        grainger.com/repo: {{ reponame }}
+    spec:
+      containers:
+      - name: {{ appname }}
+        image: {{ registry }}/{{ reponame }}:{{ tag }}
+        ports:
+        - containerPort: 50051
+          name: "grpc"
+        resources:
+          limits:
+            cpu: 1.5
+            memory: "1Gi"
+          requests:
+            cpu: 50m
+            memory: "256Mi"
+        livenessProbe:
+          exec:
+            command: ["/grpc_health_probe", "-addr=:50051"]
+          initialDelaySeconds: 30
+        readinessProbe:
+          exec:
+            command: ["/grpc_health_probe", "-addr=:50051"]
+          initialDelaySeconds: 30
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_SERVICE_NAME
+          value: {{ appname }}
+        - name: DD_TRACE_GLOBAL_TAGS
+          value: "env:{{ environment }}"
+
+      imagePullSecrets:
+      - name: {{ reponame }}-image-pull-secrets
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ appname }}
+  labels:
+    app: {{ appname }}
+    version: {{ tag }}
+    app.kubernetes.io/name: {{ appname }}
+    app.kubernetes.io/version: {{ tag }}
+    grainger.com/managed-by-team: {{ teamname }}
+    grainger.com/repo: {{ reponame }}
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ appname }}
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 70
+
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ appname }}
+  labels:
+    app: {{ appname }}
+    version: {{ tag }}
+    app.kubernetes.io/name: {{ appname }}
+    app.kubernetes.io/version: {{ tag }}
+    grainger.com/managed-by-team: {{ teamname }}
+    grainger.com/repo: {{ reponame }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: {{ appname }}
