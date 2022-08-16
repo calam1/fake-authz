@@ -1,7 +1,50 @@
 A fake external auth for envoy proxy
 https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter
 
+# If you don't have a cluster and namespace set up please run the following kind and istio commands, otherwise skip down to the docker build command
+# k8 provider is Kind, create a Kind cluster using a nodeport
 
+## config.yml
+```
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30000
+    hostPort: 30000
+    listenAddress: "0.0.0.0" # Optional, defaults to "0.0.0.0"
+    protocol: tcp # Optional, defaults to tcp
+- role: worker
+```
+
+# command to create a cluster using k8 1.19.16
+```
+❯❯❯ kind create cluster --image=kindest/node:v1.19.16 --config=config.yaml --name nodeport
+```
+
+
+# create a namespace and enable istio-injection if it doesn't exist
+```
+❯❯❯ kubectl create ns mystuff
+namespace/mystuff created
+
+❯❯❯ kubectl label namespace mystuff istio-injection=enabled --overwrite=true
+
+namespace/mystuff labeled
+
+❯❯❯ kubectl get namespace -L istio-injection
+
+NAME                 STATUS   AGE    ISTIO-INJECTION
+default              Active   5d5h
+istio-system         Active   5d5h   disabled
+kube-node-lease      Active   5d5h
+kube-public          Active   5d5h
+kube-system          Active   5d5h
+local-path-storage   Active   5d5h
+mystuff              Active   29s    enabled
+❯❯❯ docker build -t python-api:v1.0 .
+```
 
 # create a namespace and enable istio-injection if it doesn't exist
 ```
